@@ -1,0 +1,10 @@
+venv/
+__pycache__
+__cythonized*__
+.snakemake
+arxiv
+build
+cython_debug
+resources/
+/figures
+/results

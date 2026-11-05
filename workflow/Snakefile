@@ -1,0 +1,392 @@
+from helper import coinsizes
+import pandas as pd
+
+# Figures that take comparatively little time to generate from scratch
+rule quick:
+    input:
+        # Empirical Evaluation
+        "figures/occurring_er_1000-0.1.pdf",
+        "figures/prob_approx_er.pdf",
+        "figures/prob_approx_er_sparse.pdf",
+
+        # Application Example: Cycle Counting
+        "results/count-estimator/summary.tex",
+
+        # Application Example: Spin Glasses and Cycle Frustration
+        "results/balance-estimator/summary.tex",
+
+        # Appendix
+
+        ## Accuracy
+        "figures/prob_approx_er_mean_per_length.pdf",
+        "figures/prob_approx_er_mean_per_length_sparse.pdf",
+        ### Synthetic Examples
+        expand("figures/prob_approx_{kind}.pdf", kind=['full_50', 'fullbip_100', 'sbm', 'sbm_heterophilic', 'barabasialbert', 'barbell', 'delaunay', 'grid']),
+        ### Real-World Examples; most from Netzschleuder
+        expand("figures/prob_approx_{kind}_rw.pdf", kind=['high_tech_company', 'new_guinea_tribes', 'november17', 'dutch_criticism', 'ceo_club', 'montreal', 'karate', 'game_thrones', 'florentine_families', 'student_cooperation']),
+
+rule all:
+    input:
+        # Empirical Evaluation
+        "figures/time.pdf",
+        "figures/occurring_er_1000-0.1.pdf",
+        "figures/occurrence_threshold_er.pdf",
+        "figures/prob_approx_er.pdf",
+        "figures/prob_approx_er_sparse.pdf",
+
+        # Application Example: Cycle Counting
+        "results/count-estimator/summary.tex",
+
+        # Application Example: Spin Glasses and Cycle Frustration
+        expand("figures/spinglass_short_{kind}.pdf", kind=['er', 'grid']),
+        "results/balance-estimator/summary.tex",
+        "results/count-estimator/summary.tex",
+
+        # Appendix
+
+        ## Spin Glasses
+        expand("figures/spinglass_{kind}.pdf", kind=['grid', 'er', 'grid2', 'er2']),
+
+        ## Running Time
+        "figures/time_rw.pdf",
+
+        ## Accuracy
+        "figures/prob_approx_er_mean_per_length.pdf",
+        "figures/prob_approx_er_mean_per_length_sparse.pdf",
+        ### Synthetic Examples
+        expand("figures/prob_approx_{kind}.pdf", kind=['full_50', 'fullbip_100', 'sbm', 'sbm_heterophilic', 'barabasialbert', 'barbell', 'delaunay', 'grid']),
+        ### Real-World Examples; most from Netzschleuder
+        expand("figures/prob_approx_{kind}_rw.pdf", kind=['high_tech_company', 'new_guinea_tribes', 'november17', 'dutch_criticism', 'ceo_club', 'montreal', 'karate', 'game_thrones', 'florentine_families', 'student_cooperation']),
+
+rw_datasets_small = ['karate*78', 'ceo-club', 'high-tech-company', 'student-cooperation', 'game-thrones', 'cs-department', 'polbooks', 'football', 'crime', 'facebook-friends', 'contact', 'sp-infectious', 'sp-high-school*proximity', 'wiki-science', 'sp-primary-school']
+
+rw_datasets_medium = rw_datasets_small + ['dnc', 'chicago-road', 'escorts', 'sp-colocation*Thiers13', 'cofe', 'marvel-universe']
+
+rw_datasets_all = rw_datasets_medium + ['email-enron', 'us-agencies*aggregate', 'dblp-coauthor-snap', 'roadnet*PA', 'roadnet*CA', 'hyves', 'wikitree', 'flixster', 'dblp-coauthor', 'as-skitter']
+
+rule plot_time_rw:
+    output: 'figures/time_rw.pdf'
+    input: expand('results/time-rw/HT-approx/{kind}-100.csv', kind=rw_datasets_all),
+           expand('results/time-rw/OC-exact/{kind}-100.csv', kind=rw_datasets_medium),
+           expand('results/time-rw/IS-exact/{kind}-100.csv', kind=rw_datasets_medium),
+           expand('results/time-rw/HT-exact/{kind}-100.csv', kind=rw_datasets_small),
+           expand('results/time-rw/Giscard-const/{kind}-100.csv', kind=rw_datasets_small),
+    script: 'scripts/plot_time_rw.py'
+
+rule time_rw_tmp:
+    input: 
+           expand('results/time-rw/Giscard-const/{kind}-100.csv', kind=rw_datasets_small)
+
+rule cythonize_spinglass:
+    # Cythonizes the required files.
+    input:
+        "spinglass/solver.pyx"
+    output:
+        # actual output filename sytem-dependent and not relevant -> __cythonized__ used to mark dependencies and detect changes by snakemake.
+        "__cythonized_spinglass__"
+    shell:
+        # remove option '-a' if you don't need to debug / profile
+        "C_INCLUDE_PATH=$(python -c 'import numpy; print(numpy.get_include())') cythonize -i -a {input} && touch {output}"
+
+rule cythonize:
+    # Cythonizes the required files.
+    input:
+        "random_ccs/sampling.pyx",
+        "random_ccs/spanning_trees.pyx"
+    output:
+        # actual output filename sytem-dependent and not relevant -> __cythonized__ used to mark dependencies and detect changes by snakemake.
+        "__cythonized__"
+    shell:
+        # remove option '-a' if you don't need to debug / profile
+        "C_INCLUDE_PATH=$(python -c 'import numpy; print(numpy.get_include())') cythonize -i -a {input} && touch {output}"
+
+rule spinglass_exact:
+    input:
+        "__cythonized_spinglass__"
+    output:
+        "results/spinglass/{kind}/exact"
+    script:
+        "scripts/spinglass_exact.py"
+
+rule spinglass_sim:
+    input:
+        "results/spinglass/{kind}/exact"
+    output:
+        "results/spinglass/{kind}/results.csv",
+        "results/spinglass/{kind}/total.csv",
+    script:
+        "scripts/spinglass_sim.py"
+
+rule plot_spinglass:
+    input:
+        exact="results/spinglass/{kind}/exact",
+        results="results/spinglass/{kind}/results.csv"
+    output:
+        "figures/spinglass_{kind,[a-zA-Z0-9]+}.pdf"
+    params:
+        short_plot = False
+    script:
+        "scripts/plot_spinglass.py"
+
+rule plot_spinglass_short:
+    input:
+        exact="results/spinglass/{kind}/exact",
+        results="results/spinglass/{kind}/results.csv"
+    output:
+        "figures/spinglass_short_{kind,[a-zA-Z0-9]+}.pdf"
+    params:
+        short_plot = True
+    script:
+        "scripts/plot_spinglass.py"
+
+COUNT_ESTIMATORS = ['HT-exact', 'HT-approx', 'OC-exact', 'OC-approx', 'IS-exact', 'IS-approx']
+COUNT_GRAPHS = ['polbooks-1', 'contact-1', 'grid-10', 'er-100-0.1', 'delaunay-50', 'karate-0', 'football-0']
+
+rule summarize_count_estimator_table:
+    input:
+        expand('results/count-estimator/{estimator}/{graph}.csv',
+            estimator=COUNT_ESTIMATORS, graph=COUNT_GRAPHS)
+    output:
+        "results/count-estimator/summary.tex"
+    params:
+        estimators = COUNT_ESTIMATORS,
+        graphs = COUNT_GRAPHS
+    script:
+        "scripts/summarize_count_estimator_table.py"
+
+
+rule summarize_count_estimator:
+    output: "results/count-estimator/summary/{graph}.csv"
+    input: 
+        expand('results/count-estimator/{estimator}/{{graph}}.csv',
+            estimator=['HT-exact', 'HT-approx', 'OC-exact', 'OC-approx', 'IS-exact', 'IS-approx'])
+    script:
+        "scripts/summarize_estimator.py"
+
+rule count_estimator_er_exp:
+    input: "__cythonized__"
+    output:
+        "results/count-estimator/{estimator,[a-zA-Z][a-zA-Z]-.*}/{kind,[a-zA-Z]+}-{n,[0-9]+}-{p,[0-9\.]+}.csv"
+    script:
+        "scripts/count_estimator_exp.py"
+
+rule count_estimator_exp:
+    input: "__cythonized__"
+    output:
+        "results/count-estimator/{estimator,[a-zA-Z][a-zA-Z]-.*}/{kind,[a-zA-Z]+}-{n,[0-9]+}.csv"
+    script:
+        "scripts/count_estimator_exp.py"
+
+BALANCE_ESTIMATORS = ['HT-exact', 'HT-approx', 'OC-exact', 'OC-approx', 'IS-exact', 'IS-approx', 'Giscard']
+BALANCE_GRAPHS = ['er', 'er2', 'er3', 'grid', 'grid2', 'grid3']
+
+rule balance_estimator_all:
+    input:
+        "results/balance-estimator/summary.tex"
+
+rule summarize_balance_estimator:
+    input:
+        expand('results/balance-estimator/{estimator}/{graph}.csv',
+            estimator=BALANCE_ESTIMATORS, graph=BALANCE_GRAPHS)
+    output:
+        "results/balance-estimator/summary.tex"
+    params:
+        estimators = BALANCE_ESTIMATORS,
+        graphs = BALANCE_GRAPHS
+    script:
+        "scripts/summarize_balance_estimator.py"
+
+rule balance_estimator_exp:
+    threads: 20
+    input: "__cythonized__"
+    output:
+        "results/balance-estimator/{estimator}/{kind}.csv"
+    script:
+        "scripts/balance_estimator_exp.py"
+
+rule prob_approx_er_exp:
+    input: "__cythonized__"
+    output:
+        "results/prob-approx/{kind,[a-zA-Z]+}/{n,[0-9]+}-{p,[0-9\.]+}.csv"
+    script:
+        "scripts/prob_approx_exp.py"
+
+rule prob_approx_sbm_exp:
+    input: "__cythonized__"
+    output:
+        "results/prob-approx/{kind,[a-zA-Z]+}/{n,[0-9]+}-{p,[0-9\.]+}-{q,0.[0-9]+}.csv"
+    script:
+        "scripts/prob_approx_exp.py"
+
+rule prob_approx_config_exp:
+    input: "__cythonized__"
+    output:
+        "results/prob-approx/{kind}/{n,[0-9]+}.csv"
+    script:
+        "scripts/prob_approx_exp.py"
+
+rule time_exp:
+    threads: 2
+    priority: lambda wildcards, input: 1 if wildcards.method == 'Giscard-const' else 0
+    input: "__cythonized__"
+    output:
+        "results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv"
+    script:
+        "scripts/time_exp.py"
+
+rule time_rw_exp:
+    threads: 2
+    input: "__cythonized__"
+    output:
+        "results/time-rw/{method}/{kind}-{samples}.csv"
+    script:
+        "scripts/time_rw_exp.py"
+
+rule plot_time:
+    output:
+        "figures/time.pdf"
+    input:
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-approx'], n=coinsizes(10,5000), p=[.5], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-approx'], n=coinsizes(50,10000), p=[.1], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-approx'], n=coinsizes(100,10000), p=[.05], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-approx'], n=coinsizes(20,5000), p=[.2], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['OC-exact'], n=coinsizes(10,500), p=[.5], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['OC-exact'], n=coinsizes(50,1000), p=[.1], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['OC-exact'], n=coinsizes(100,1000), p=[.05], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['OC-exact'], n=coinsizes(20,500), p=[.2], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-exact'], n=coinsizes(10,100), p=[.5], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-exact'], n=coinsizes(50,200), p=[.1], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-exact'], n=coinsizes(100,200), p=[.05], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['HT-exact'], n=coinsizes(20,200), p=[.2], N_factor=[1], samples=[100]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['Giscard-const'], n=coinsizes(10,100), p=[.5], N_factor=[1], samples=[10]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['Giscard-const'], n=coinsizes(50,200), p=[.1], N_factor=[1], samples=[10]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['Giscard-const'], n=coinsizes(100,200), p=[.05], N_factor=[1], samples=[10]),
+        expand("results/time/{method}-{n}-{p}-{N_factor}-{samples}.csv", method=['Giscard-const'], n=coinsizes(20,200), p=[.2], N_factor=[1], samples=[10]),
+    script:
+        "scripts/plot_time.py"
+
+rule plot_prob_approx_rw:
+    input:
+        # figure names use underscores, Netzschleuder names in results use dashes
+        lambda wildcards: f"results/prob-approx/{wildcards.kind.replace('_', '-')}/0.csv"
+    params:
+        y_axis="approx",
+        y_label="approx. incl. probability",
+        x_label="correct inclusion probability",
+        relative_inset='True'
+    output:
+        "figures/prob_approx_{kind,[a-zA-Z][a-zA-Z0-9\-\_]*}_rw.pdf"
+    script:
+        "scripts/plot_prob_approx.py"
+
+synth_configs = [
+    ('er', 'er/30-0.5'),
+    ('er_sparse', 'er/30-0.15'),
+    ('delaunay', 'delaunay/50'),
+    ('barbell', 'barbell/23'),
+    ('full_50', 'full/50'),
+    ('fullbip_100', 'fullbip/100'),
+    ('grid', 'grid/10'),
+    ('sbm_heterophilic', 'sbm/50-0.2-0.4'),
+    ('sbm', 'sbm/30-0.4-0.2'),
+    ('barabasialbert', 'barabasialbert/30-0.25'),
+]
+
+for name, cfg in synth_configs:
+    rule:
+        name: f'plot_prob_approx_{name}'
+        input:
+            f"results/prob-approx/{cfg}.csv"
+        params:
+            y_axis="approx",
+            y_label="approx. incl. probability",
+            x_label="correct inclusion probability",
+            relative_inset='True'
+        output:
+            f"figures/prob_approx_{name}.pdf"
+        script:
+            "scripts/plot_prob_approx.py"
+
+rule plot_prob_approx_er_mean_per_length:
+    input:
+        "results/prob-approx/er/30-0.5.csv"
+    output:
+        "figures/prob_approx_er_mean_per_length.pdf",
+    params:
+        y_axis="mean_per_length",
+        y_label="mean incl. prob. for len",
+        x_label="correct inclusion probability",
+        relative_inset='True'
+    script:
+        "scripts/plot_prob_approx.py"
+
+rule plot_prob_approx_er_mean_per_length_sparse:
+    input:
+        "results/prob-approx/er/30-0.15.csv"
+    output:
+        "figures/prob_approx_er_mean_per_length_sparse.pdf",
+    params:
+        y_axis="mean_per_length",
+        y_label="mean incl. prob. for len",
+        x_label="correct inclusion probability",
+        relative_inset='True'
+    script:
+        "scripts/plot_prob_approx.py"
+
+rule occurrence_aggregated:
+    output: "results/occurrence-{kind,[^/]+}/{params,[^/]+}-{runs}.csv"
+    input: lambda wildcards: expand("results/occurrence-{{kind}}/run/{{params}}-{run}.csv", run=list(range(int(wildcards.runs))))
+    run:
+        df_data = pd.concat([pd.read_csv(file) for file in input])
+        df_data.to_csv(output[0])
+
+rule occurrence_aggregated_rw:
+    output: "results/occurrence-rw/{kind,[^/]+}/{params,[^/]+}-{runs,[0-9]+}.csv"
+    input: lambda wildcards: expand("results/occurrence-rw/{{kind}}/run/{{params}}-{run}.csv", run=list(range(int(wildcards.runs))))
+    run:
+        df_data = pd.concat([pd.read_csv(file) for file in input])
+        df_data.to_csv(output[0])
+
+rule occurrence_rw_exp:
+    input: "__cythonized__"
+    output:
+        "results/occurrence-rw/{kind}/run/{samples,[0-9]+}-{run,[0-9]+}.csv"
+    script:
+        "scripts/occurrence_exp.py"
+
+rule occurrence_exp:
+    input: "__cythonized__"
+    output:
+        "results/occurrence-{kind}/run/{n,[0-9]+}-{p,[0-9\.]+}-{samples,[0-9]+}-{run,[0-9]+}.csv"
+    script:
+        "scripts/occurrence_exp.py"
+
+rule plot_occurring:
+    output:
+        "figures/occurring_{kind}_{params}.pdf"
+    input:
+        "results/occurrence-{kind}/{params}-1000-50.csv"
+    params:
+        x='l',
+        y='occurred',
+        y_label='# of occurring cycles',
+        x_label='cycle length $l$',
+        red_line="samples"
+    script:
+        "scripts/plot_occurring.py"
+
+rule plot_occurrence_threshold:
+    output:
+        "figures/occurrence_threshold_er.pdf"
+    input:
+        expand("results/occurrence-er/{n}-{p}-1000-50.csv", n=coinsizes(50, 10000), p=[0.1, 0.2, 0.5, 1.0])
+    script:
+        "scripts/plot_occurrence_threshold.py"
+
+rule plot_occurrence_threshold_rw:
+    output:
+        "figures/occurrence_threshold_rw.pdf"
+    input:
+        expand("results/occurrence-rw/{kind}/1000-10.csv", kind=rw_datasets_all)
+    script:
+        "scripts/plot_occurrence_threshold_rw.py"

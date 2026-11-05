@@ -1,0 +1,24 @@
+name: cycles
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.11
+  - snakemake-minimal=9.27
+  - matplotlib
+  - pandas
+  - networkx
+  - numpy
+  - scikit-learn
+  - scipy
+  - graphviz
+  - seaborn
+  - cython
+  - graph-tool
+  - tqdm
+  - scikit-sparse >=0.5
+  - joblib
+  - pip
+  - pip:
+    - joblib-progress
+    - git+https://github.com/josefhoppe/cycleindex.git
